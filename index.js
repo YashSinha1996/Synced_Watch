@@ -8,6 +8,14 @@ app.get('/', function(req, res) {
 
 var rooms = {}
 
+var clone = function(json_original) {
+    return JSON.parse(JSON.stringify(json_original));
+}
+
+var base_user = {
+    "playable": false
+}
+
 io.on('connection', function(socket) {
     socket.room = null;
     console.log('a user connected');
@@ -37,7 +45,14 @@ io.on('connection', function(socket) {
             console.log(room_info)
             if (!rooms[room_info.room_num]) {
                 if (room_info.url) {
-                    rooms[room_info.room_num] = room_info.url;
+                    users = {};
+                    users[socket.id] = clone(base_user);
+                    rooms[room_info.room_num] = {
+                        'url': room_info.url,
+                        'joined': 1,
+                        'users': users
+                    };
+                    socket.room = room_info.room_num;
                     socket.emit('join-success', {
                         'name': room_info.room_num,
                         'url': room_info.url
@@ -55,10 +70,13 @@ io.on('connection', function(socket) {
         }
         if (room_num in rooms) {
             socket.join(room_num);
-            console.log(room_num + " has joined with url " + rooms[room_num])
+            console.log(room_num + " has joined with url " + rooms[room_num].url)
+            rooms[room_num].joined++;
+            rooms[room_num].users[socket.id] = clone(base_user);
+            socket.room = rooms[room_num].url;
             socket.emit('join-success', {
                 'name': room_num,
-                'url': rooms[room_num]
+                'url': rooms[room_num].url
             })
         } else {
             socket.emit('err', "Room does not exist. Create it first.");
@@ -67,7 +85,18 @@ io.on('connection', function(socket) {
     });
     // socket
     socket.on('disconnect', function() {
-        console.log('user disconnected');
+        console.log('user disconnected from ' + socket.room);
+        if (socket.room) {
+            rooms[socket.room].joined--;
+            if (rooms[socket.room].joined <= 0) {
+                console.log("Removing room " + socket.room)
+                delete rooms[socket.room];
+            } else {
+                console.log("Deleting user " + socket.id + " from room " + socket.room)
+                delete rooms[socket.room].users[socket.id];
+            }
+        }
+
     });
 });
 
